@@ -1,0 +1,20 @@
+{
+  "name": "@iamdimka/router",
+  "version": "0.1.0",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "scripts": {
+    "prepare": "tsc"
+  },
+  "repository": "iamdimka/npm-router.git",
+  "author": "iamdimka",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^9.4.6",
+    "@types/path-to-regexp": "^1.7.0"
+  },
+  "dependencies": {
+    "path-to-regexp": "^2.1.0"
+  }
+}
