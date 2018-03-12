@@ -1,28 +1,28 @@
 import { IncomingMessage, ServerResponse } from "http"
 import { createWriteStream, createReadStream, stat } from "fs"
 import { parse } from "url"
-import { dirname } from "path"
-import { mkdir } from "./util"
+import { dirname, normalize } from "path"
+import { mkdir, KeyValue } from "./util"
 
 export default class Context<Ctx = void> {
   readonly req: IncomingMessage
   readonly res: ServerResponse
   readonly ctx: Ctx
   protected _body?: Promise<Buffer>
-  readonly state: { [key: string]: any } = {}
-  readonly params: { [key: string]: string } = {}
-  readonly query: { [key: string]: string | string[] } = {}
+  readonly state: KeyValue = {}
+  readonly params: KeyValue<string> = {}
+  readonly query: KeyValue<string | string[]> = {}
   readonly pathname: string
 
   bypass?: boolean
 
-  constructor(req: IncomingMessage, res: ServerResponse, ctx?: Ctx) {
+  constructor(req: IncomingMessage, res: ServerResponse, ctx: Ctx) {
     this.req = req
     this.res = res
-    this.ctx = ctx!
+    this.ctx = ctx
 
     const { pathname, query } = parse(req.url || "", true)
-    this.pathname = pathname || ""
+    this.pathname = normalize(pathname || "/")
     this.query = query || {}
   }
 
@@ -57,18 +57,28 @@ export default class Context<Ctx = void> {
     })))
   }
 
-  setHeader(name: string, value: number | string | string[]): this {
+  setHeader(name: string, value: number | string | string[] | null | void): this {
     if (!this.res.headersSent) {
+      if (value == null) {
+        this.res.removeHeader(name)
+        return this
+      }
+
       this.res.setHeader(name, value)
     }
 
     return this
   }
 
-  setHeaders(data: { [name: string]: number | string | string[] }): this {
+  setHeaders(data: KeyValue<number | string | string[]>): this {
     if (this.res.headersSent) {
       for (const key in data) {
         if (data.hasOwnProperty(key)) {
+          if (data[key] == null) {
+            this.res.removeHeader(name)
+            continue
+          }
+
           this.res.setHeader(name, data[key])
         }
       }
@@ -96,6 +106,39 @@ export default class Context<Ctx = void> {
     }
 
     return this
+  }
+
+  file(path: string, contentType?: string | null, force?: boolean): Promise<void> {
+    return new Promise((resolve, reject) => stat(path, (err, stats) => {
+      if (err) {
+        if (err.code === "ENOENT") {
+          this.status = 404
+          this.end()
+          return resolve()
+        }
+
+        return reject(err)
+      }
+
+      const Etag = `${stats.mtime.getTime().toString(36)}/${stats.size.toString(36)}`
+      if (!force && this.req.headers.Etag === Etag) {
+        this.status = 304
+        this.end()
+        return resolve()
+      }
+
+      this.status = 200
+      this.setHeaders({
+        "Etag": Etag,
+        "Content-Length": stats.size
+      })
+
+      if (contentType) {
+        this.setHeader("Content-Type", contentType)
+      }
+
+      createReadStream(path).on("error", reject).on("end", resolve).pipe(this.res)
+    }))
   }
 
   saveTo(path: string): Promise<void> {

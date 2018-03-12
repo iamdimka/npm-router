@@ -1,6 +1,6 @@
 import * as pathToRegexp from "path-to-regexp"
 import Context from "./context"
-import { IncomingMessage, ServerResponse, createServer } from "http"
+import { Server, IncomingMessage, ServerResponse, createServer } from "http"
 
 export interface Options extends pathToRegexp.RegExpOptions {
   exact?: boolean
@@ -13,6 +13,7 @@ export interface Middleware<UserContext> {
 export interface CloseListener {
   host: string
   port: number
+  server: Server
   (): Promise<void>
 }
 
@@ -151,28 +152,26 @@ export default class Router<UserContext extends {} = {}> {
       }
     }
 
-    function finalize(res: ServerResponse) {
-      if (!res.headersSent) {
-        res.flushHeaders()
+    function finalize($: Context<UserContext>) {
+      if ($.bypass) {
+        return
       }
 
-      if (!res.finished) {
-        res.end()
-      }
+      $.end()
     }
 
     return (req: IncomingMessage, res: ServerResponse) => {
       res.statusCode = 404
       const $ = new Context(req, res, ctx)
 
-      router($, () => finalize(res)).catch(e => {
+      router($, () => finalize($)).catch(e => {
         console.error(e)
 
         if (!res.headersSent) {
           res.statusCode = 500
         }
 
-        finalize(res)
+        finalize($)
       })
     }
   }
@@ -197,7 +196,8 @@ export default class Router<UserContext extends {} = {}> {
           server.close((err: Error) => err ? reject(err) : resolve())
         ), {
             host: address.address,
-            port: address.port
+            port: address.port,
+            server: server
           })
 
         resolve(closeListener)

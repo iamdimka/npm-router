@@ -1,6 +1,10 @@
 import { mkdir as md } from "fs"
 import { dirname } from "path"
 
+export interface KeyValue<Value = any> {
+  [key: string]: Value
+}
+
 export function mkdir(path: string, recurse?: boolean): Promise<boolean> {
   return new Promise((resolve, reject) =>
     md(path, e => {
