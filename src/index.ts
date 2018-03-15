@@ -2,6 +2,8 @@ import * as pathToRegexp from "path-to-regexp"
 import Context from "./context"
 import { Server, IncomingMessage, ServerResponse, createServer } from "http"
 
+export { Context }
+
 export interface Options extends pathToRegexp.RegExpOptions {
   exact?: boolean
 }
