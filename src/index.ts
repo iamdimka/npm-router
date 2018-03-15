@@ -1,8 +1,9 @@
 import * as pathToRegexp from "path-to-regexp"
 import Context from "./context"
 import { Server, IncomingMessage, ServerResponse, createServer } from "http"
+import Cookies, { CookieOptions } from "./cookies"
 
-export { Context }
+export { Context, Cookies, CookieOptions }
 
 export interface Options extends pathToRegexp.RegExpOptions {
   exact?: boolean

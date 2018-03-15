@@ -3,6 +3,7 @@ import { createWriteStream, createReadStream, stat } from "fs"
 import { parse } from "url"
 import { dirname, normalize } from "path"
 import { mkdir, KeyValue } from "./util"
+import Cookies from "./cookies"
 
 export default class Context<Ctx = void> {
   readonly req: IncomingMessage
@@ -26,8 +27,24 @@ export default class Context<Ctx = void> {
     this.query = query || {}
   }
 
-  get method() {
-    return this.req.method
+  get cookies(): Cookies {
+    if (!(this instanceof Context)) {
+      throw new Error("Could be get from instance")
+    }
+
+    const cookies = new Cookies(this.req, this.res)
+
+    Object.defineProperty(this, "cookies", {
+      get() {
+        return cookies
+      }
+    })
+
+    return cookies
+  }
+
+  get method(): string {
+    return this.req.method || "GET"
   }
 
   get status(): number {
@@ -188,7 +205,7 @@ export default class Context<Ctx = void> {
     if (!contentType && serializer === JSON.stringify) {
       this.setHeader("Content-Type", "application/json")
     }
-    
+
     return this.end(serializer(payload), true)
   }
 
