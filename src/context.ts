@@ -5,6 +5,8 @@ import { dirname, normalize } from "path"
 import { mkdir, KeyValue } from "./util"
 import Cookies from "./cookies"
 
+const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/
+
 export default class Context<Ctx = void> {
   readonly req: IncomingMessage
   readonly res: ServerResponse
@@ -57,6 +59,11 @@ export default class Context<Ctx = void> {
 
   get url(): string {
     return this.req.url || ""
+  }
+
+  ip(): string | void {
+    const ip = `${ this.req.headers["x-forwarded-for"] },${ this.req.connection.remoteAddress }`.match(regexpIP)
+    return ip ? ip[0] : undefined
   }
 
   body(): Promise<Buffer> {
