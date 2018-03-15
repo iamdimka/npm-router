@@ -184,18 +184,33 @@ export default class Context<Ctx = void> {
       }))
   }
 
-  end(body?: string | Buffer): this {
+  send(payload: any, serializer: (value: any, ...rest: any[]) => Buffer | string = JSON.stringify, contentType?: string) {
+    if (!contentType && serializer === JSON.stringify) {
+      this.setHeader("Content-Type", "application/json")
+    }
+    
+    return this.end(serializer(payload), true)
+  }
+
+  end(body?: string | Buffer, setContentLength: boolean = true): this {
     if (this.res.finished) {
       return this
-    }
-
-    if (!this.res.headersSent) {
-      this.res.flushHeaders()
     }
 
     if (!body) {
       this.res.end()
       return this
+    }
+
+    if (typeof body === "string") {
+      body = Buffer.from(body)
+    }
+
+    if (!this.res.headersSent) {
+      if (setContentLength) {
+        this.res.setHeader("Content-Length", body.length)
+      }
+      this.res.flushHeaders()
     }
 
     if (this.req.method === "HEAD") {
