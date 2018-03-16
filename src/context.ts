@@ -145,7 +145,7 @@ export default class Context<Ctx = void> {
       }
 
       const Etag = `${stats.mtime.getTime().toString(36)}/${stats.size.toString(36)}`
-      if (!force && this.req.headers.Etag === Etag) {
+      if (!force && this.req.headers["if-none-match"] === Etag) {
         this.status = 304
         this.end()
         return resolve()
