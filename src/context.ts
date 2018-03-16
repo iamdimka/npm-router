@@ -95,7 +95,7 @@ export default class Context<Ctx = void> {
   }
 
   setHeaders(data: KeyValue<number | string | string[]>): this {
-    if (this.res.headersSent) {
+    if (!this.res.headersSent) {
       for (const key in data) {
         if (data.hasOwnProperty(key)) {
           if (data[key] == null) {
