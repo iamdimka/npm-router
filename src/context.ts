@@ -99,11 +99,11 @@ export default class Context<Ctx = void> {
       for (const key in data) {
         if (data.hasOwnProperty(key)) {
           if (data[key] == null) {
-            this.res.removeHeader(name)
+            this.res.removeHeader(key)
             continue
           }
 
-          this.res.setHeader(name, data[key])
+          this.res.setHeader(key, data[key])
         }
       }
     }
