@@ -173,7 +173,7 @@ export default class Router<UserContext extends {} = {}> {
         if (!res.headersSent) {
           res.statusCode = 500
         }
-
+      }).then(() => {
         finalize($)
       })
     }

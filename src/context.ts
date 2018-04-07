@@ -62,7 +62,7 @@ export default class Context<Ctx = void> {
   }
 
   ip(): string | void {
-    const ip = `${ this.req.headers["x-forwarded-for"] },${ this.req.connection.remoteAddress }`.match(regexpIP)
+    const ip = `${this.req.headers["x-forwarded-for"]},${this.req.connection.remoteAddress}`.match(regexpIP)
     return ip ? ip[0] : undefined
   }
 
