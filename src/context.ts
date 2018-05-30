@@ -7,10 +7,9 @@ import Cookies from "./cookies"
 
 const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/
 
-export default class Context<Ctx = void> {
+export default class Context {
   readonly req: IncomingMessage
   readonly res: ServerResponse
-  readonly ctx: Ctx
   protected _body?: Promise<Buffer>
   readonly state: KeyValue = {}
   readonly params: KeyValue<string> = {}
@@ -19,14 +18,13 @@ export default class Context<Ctx = void> {
 
   bypass?: boolean
 
-  constructor(req: IncomingMessage, res: ServerResponse, ctx: Ctx) {
+  constructor(req: IncomingMessage, res: ServerResponse) {
     this.req = req
     this.res = res
-    this.ctx = ctx
 
     const { pathname, query } = parse(req.url || "", true)
     this.pathname = normalize(pathname || "/")
-    this.query = query || {}
+    this.query = query as any || {}
   }
 
   get cookies(): Cookies {

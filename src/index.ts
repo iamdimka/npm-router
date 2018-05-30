@@ -2,7 +2,6 @@ import * as pathToRegexp from "path-to-regexp"
 import Context from "./context"
 import { Server, IncomingMessage, ServerResponse, createServer } from "http"
 import Cookies, { CookieOptions } from "./cookies"
-import { createContext } from "vm";
 
 export { Context, Cookies, CookieOptions }
 
@@ -10,8 +9,8 @@ export interface Options extends pathToRegexp.RegExpOptions {
   exact?: boolean
 }
 
-export interface Middleware<Ctx = { [key: string]: any }> {
-  ($: Context<Ctx>, next: () => void): any
+export interface Middleware<Ctx extends Context = Context> {
+  ($: Ctx, next: () => void): any
 }
 
 export interface CloseListener {
@@ -21,42 +20,47 @@ export interface CloseListener {
   (): Promise<void>
 }
 
-export default class Router<RouterContext extends {} = { [key: string]: any }, MiddlewareContext extends RouterContext = RouterContext> {
-  protected readonly _middlewares: Middleware<MiddlewareContext>[] = []
-  readonly ctx: RouterContext
+export interface Constructor<Ctx extends Context = Context> {
+  new(req: IncomingMessage, res: ServerResponse, ...args: any[]): Ctx
+}
 
-  constructor(ctx: RouterContext = {} as RouterContext, createContext?: Middleware<Partial<MiddlewareContext> & RouterContext>) {
-    this.ctx = ctx
+export default class Router<Ctx extends Context = Context> {
+  protected readonly _middlewares: Middleware<Ctx>[] = []
+  readonly ContextConstructor: Constructor<Ctx>
 
-    if (createContext) {
-      this.use(createContext)
-    }
+  constructor(ctx?: Constructor<Ctx>) {
+    this.ContextConstructor = ctx || Context as any
   }
 
-  use(...middlewares: Middleware<MiddlewareContext>[]): this {
+  use(...middlewares: Middleware<Ctx>[]): this {
     this._middlewares.push(...middlewares)
     return this
   }
 
-  route(method: string, middleware: Middleware<MiddlewareContext>): this
-  route(method: string, path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  route(method: string, path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    if (typeof path === "function") {
+  route(method: string | undefined, middleware: Middleware<Ctx>): this
+  route(method: string | undefined, path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  route(): this {
+    if (typeof arguments[2] === "function") {
+      const [method, middleware] = arguments[2]
+
       return this.use(($, next) => {
-        if (method !== "ANY" && $.method !== method) {
+        if (method && $.method !== method) {
           return next()
         }
 
-        return path($, next)
+        return middleware($, next)
       })
     }
 
+    const [method, path, middleware, options] = arguments
+
     const keys: pathToRegexp.Key[] = []
     const re = pathToRegexp(path, keys, options)
+    const keysLength = keys.length
     const exact = !options || !options.exact
 
     return this.use(($, next) => {
-      if (method !== "ANY" && $.method !== method) {
+      if (method && $.method !== method) {
         return next()
       }
 
@@ -69,78 +73,79 @@ export default class Router<RouterContext extends {} = { [key: string]: any }, M
         return next()
       }
 
-      keys.forEach((key, i) => {
-        $.params[key.name] = match[i + 1]
-      })
+      for (let i = 0; i < keysLength; i++) {
+        $.params[keys[i].name] = match[i + 1]
+      }
 
       return middleware!($, next)
     })
   }
 
-  any(middleware: Middleware<MiddlewareContext>): this
-  any(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  any(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("ANY", path as any, middleware as any, options)
+  any(middleware: Middleware<Ctx>): this
+  any(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  any(): this {
+    return (this.route as any)(undefined, ...arguments)
   }
 
-  options(middleware: Middleware<MiddlewareContext>): this
-  options(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  options(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("OPTIONS", path as any, middleware as any, options)
+  options(middleware: Middleware<Ctx>): this
+  options(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  options(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("OPTIONS", ...arguments)
   }
 
-  get(middleware: Middleware<MiddlewareContext>): this
-  get(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  get(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("GET", path as any, middleware as any, options)
+  get(middleware: Middleware<Ctx>): this
+  get(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  get(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("GET", ...arguments)
   }
 
-  head(middleware: Middleware<MiddlewareContext>): this
-  head(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  head(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("HEAD", path as any, middleware as any, options)
+  head(middleware: Middleware<Ctx>): this
+  head(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  head(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("HEAD", ...arguments)
   }
 
-  post(middleware: Middleware<MiddlewareContext>): this
-  post(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  post(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("POST", path as any, middleware as any, options)
+  post(middleware: Middleware<Ctx>): this
+  post(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  post(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("POST", ...arguments)
   }
 
-  put(middleware: Middleware<MiddlewareContext>): this
-  put(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  put(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("PUT", path as any, middleware as any, options)
+  put(middleware: Middleware<Ctx>): this
+  put(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  put(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("PUT", ...arguments)
   }
 
-  patch(middleware: Middleware<MiddlewareContext>): this
-  patch(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  patch(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("PATCH", path as any, middleware as any, options)
+  patch(middleware: Middleware<Ctx>): this
+  patch(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  patch(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("PATCH", ...arguments)
   }
 
-  delete(middleware: Middleware<MiddlewareContext>): this
-  delete(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  delete(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("DELETE", path as any, middleware as any, options)
+
+  delete(middleware: Middleware<Ctx>): this
+  delete(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  delete(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("DELETE", ...arguments)
   }
 
-  trace(middleware: Middleware<MiddlewareContext>): this
-  trace(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  trace(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("TRACE", path as any, middleware as any, options)
+  trace(middleware: Middleware<Ctx>): this
+  trace(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  trace(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("TRACE", ...arguments)
   }
 
-  connect(middleware: Middleware<MiddlewareContext>): this
-  connect(path: pathToRegexp.Path, middleware: Middleware<MiddlewareContext>, options?: Options): this
-  connect(path: pathToRegexp.Path | Middleware<MiddlewareContext>, middleware?: Middleware<MiddlewareContext>, options?: Options): this {
-    return this.route("CONNECT", path as any, middleware as any, options)
+  connect(middleware: Middleware<Ctx>): this
+  connect(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  connect(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
+    return (this.route as any)("CONNECT", ...arguments)
   }
 
   listener() {
-    const { _middlewares: middlewares, ctx } = this
+    const { _middlewares: middlewares, ContextConstructor } = this
 
-    function router($: Context<MiddlewareContext>, next: () => void) {
+    function router($: Ctx, next: () => void) {
       let i = -1
       const { length } = middlewares
 
@@ -166,7 +171,7 @@ export default class Router<RouterContext extends {} = { [key: string]: any }, M
       }
     }
 
-    function finalize($: Context<MiddlewareContext>) {
+    function finalize($: Ctx) {
       if ($.bypass) {
         return
       }
@@ -177,7 +182,7 @@ export default class Router<RouterContext extends {} = { [key: string]: any }, M
 
     return (req: IncomingMessage, res: ServerResponse) => {
       res.statusCode = 200
-      const $ = new Context<MiddlewareContext>(req, res, Object.create(ctx))
+      const $ = new ContextConstructor(req, res)
 
       router($, () => finalize($)).catch(e => {
         console.error(e)
@@ -205,7 +210,7 @@ export default class Router<RouterContext extends {} = { [key: string]: any }, M
       server.on("error", reject)
       server.listen(port, host, () => {
         server.removeListener("error", reject)
-        const address = server.address()
+        const address: any = server.address()
 
         const closeListener = Object.assign(() => new Promise<void>((resolve, reject) =>
           server.close((err: Error) => err ? reject(err) : resolve())
