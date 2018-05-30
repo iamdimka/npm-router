@@ -40,8 +40,8 @@ export default class Router<Ctx extends Context = Context> {
   route(method: string | undefined, middleware: Middleware<Ctx>): this
   route(method: string | undefined, path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
   route(): this {
-    if (typeof arguments[2] === "function") {
-      const [method, middleware] = arguments[2]
+    if (typeof arguments[1] === "function") {
+      const [method, middleware] = arguments
 
       return this.use(($, next) => {
         if (method && $.method !== method) {
