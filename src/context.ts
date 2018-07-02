@@ -177,14 +177,14 @@ export default class Context {
   download(data: Buffer, name?: string): void
   download(path: string, name?: string): Promise<void>
   download(pathOrBuffer: string | Buffer, name?: string): void | Promise<void> {
-    this.setHeaders({
-      "Content-Type": "application/force-download",
-      "Content-Transfer-Encoding": "binary",
-      "Content-Disposition": name ? `attachment; filename="${name}"` : "attachment",
-      "Content-Length": pathOrBuffer.length
-    })
-
     if (pathOrBuffer instanceof Buffer) {
+      this.setHeaders({
+        "Content-Type": "application/force-download",
+        "Content-Transfer-Encoding": "binary",
+        "Content-Disposition": name ? `attachment; filename="${name}"` : "attachment",
+        "Content-Length": pathOrBuffer.length
+      })
+
       this.end(pathOrBuffer)
       return
     }
