@@ -28,8 +28,15 @@ export default class Router<Ctx extends Context = Context> {
   protected readonly _middlewares: Middleware<Ctx>[] = []
   readonly ContextConstructor: Constructor<Ctx>
 
+  protected _handleError: (e: any, $: Ctx) => any = defaultHandler
+
   constructor(ctx?: Constructor<Ctx>) {
     this.ContextConstructor = ctx || Context as any
+  }
+
+  handleError(handler: (e: any, $: Ctx) => any): this {
+    this._handleError = handler
+    return this
   }
 
   use(...middlewares: Middleware<Ctx>[]): this {
@@ -143,7 +150,7 @@ export default class Router<Ctx extends Context = Context> {
   }
 
   listener() {
-    const { _middlewares: middlewares, ContextConstructor } = this
+    const { _middlewares: middlewares, ContextConstructor, _handleError } = this
 
     function router($: Ctx, next: () => void) {
       let i = -1
@@ -186,17 +193,7 @@ export default class Router<Ctx extends Context = Context> {
 
       router($, () => finalize($))
         .then(() => finalize($))
-        .catch(e => {
-          console.error(e)
-
-          if (!res.headersSent) {
-            res.statusCode = 500
-          }
-
-          if (!res.finished) {
-            res.end()
-          }
-        })
+        .catch(e => _handleError(e, $))
     }
   }
 
@@ -227,5 +224,17 @@ export default class Router<Ctx extends Context = Context> {
         resolve(closeListener)
       })
     })
+  }
+}
+
+function defaultHandler<Ctx extends Context>(e: any, { res }: Ctx) {
+  console.error(e)
+
+  if (!res.headersSent) {
+    res.statusCode = 500
+  }
+
+  if (!res.finished) {
+    res.end()
   }
 }
