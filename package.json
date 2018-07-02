@@ -1,6 +1,6 @@
 {
   "name": "@iamdimka/router",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "scripts": {
@@ -11,7 +11,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/node": "^10.1.4",
+    "@types/node": "^10.5.1",
     "@types/path-to-regexp": "^1.7.0"
   },
   "dependencies": {

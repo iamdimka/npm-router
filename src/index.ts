@@ -172,7 +172,7 @@ export default class Router<Ctx extends Context = Context> {
     }
 
     function finalize($: Ctx) {
-      if ($.bypass) {
+      if ($.bypass || $.res.finished) {
         return
       }
 
@@ -184,15 +184,19 @@ export default class Router<Ctx extends Context = Context> {
       res.statusCode = 200
       const $ = new ContextConstructor(req, res)
 
-      router($, () => finalize($)).catch(e => {
-        console.error(e)
+      router($, () => finalize($))
+        .then(() => finalize($))
+        .catch(e => {
+          console.error(e)
 
-        if (!res.headersSent) {
-          res.statusCode = 500
-        }
-      }).then(() => {
-        finalize($)
-      })
+          if (!res.headersSent) {
+            res.statusCode = 500
+          }
+
+          if (!res.finished) {
+            res.end()
+          }
+        })
     }
   }
 
