@@ -59,7 +59,7 @@ export default class Context {
     return this.req.url || ""
   }
 
-  ip(): string | void {
+  ip(): string | undefined {
     const ip = `${this.req.headers["x-forwarded-for"]},${this.req.connection.remoteAddress}`.match(regexpIP)
     return ip ? ip[0] : undefined
   }
@@ -79,7 +79,7 @@ export default class Context {
     })))
   }
 
-  setHeader(name: string, value: number | string | string[] | null | void): this {
+  setHeader(name: string, value: number | string | string[] | null | undefined): this {
     if (!this.res.headersSent) {
       if (value == null) {
         this.res.removeHeader(name)

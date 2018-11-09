@@ -28,6 +28,21 @@ export default class Cookies {
     this.res = res
   }
 
+  getParsedCookies() {
+    if (!this._parsedCookies) {
+      const cookies: { [key: string]: string } = this._parsedCookies = {}
+
+      if (this.req.headers.cookie) {
+        (this.req.headers.cookie as string).split(/;\s?/).map(record => {
+          const [key, value] = record.split("=")
+          cookies[decodeURIComponent(key)] = decodeURIComponent(value)
+        })
+      }
+    }
+
+    return this._parsedCookies
+  }
+
   set(name: string, value: string, options?: CookieOptions) {
     const opts: CookieOptions = Object.create(this.options)
 
@@ -74,18 +89,7 @@ export default class Cookies {
     return this
   }
 
-  get(key: string): string | void {
-    if (!this._parsedCookies) {
-      const cookies: { [key: string]: string } = this._parsedCookies = {}
-
-      if (this.req.headers.cookie) {
-        (this.req.headers.cookie as string).split(/;\s?/).map(record => {
-          const [key, value] = record.split("=")
-          cookies[decodeURIComponent(key)] = decodeURIComponent(value)
-        })
-      }
-    }
-
-    return this._parsedCookies[key]
+  get(key: string): string | undefined {
+    return this.getParsedCookies()[key]
   }
 }
