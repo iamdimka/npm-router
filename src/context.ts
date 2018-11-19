@@ -1,9 +1,10 @@
 import { IncomingMessage, ServerResponse } from "http"
 import { createWriteStream, createReadStream, stat } from "fs"
 import { parse } from "url"
-import { dirname, normalize } from "path"
+import { dirname } from "path"
 import { mkdir, KeyValue } from "./util"
 import Cookies from "./cookies"
+import { ParsedUrlQuery } from "querystring"
 
 const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/
 
@@ -13,7 +14,7 @@ export default class Context {
   protected _body?: Promise<Buffer>
   readonly state: KeyValue = {}
   readonly params: KeyValue<string> = {}
-  readonly query: KeyValue<string | string[]> = {}
+  readonly query: ParsedUrlQuery
   readonly pathname: string
 
   bypass?: boolean
@@ -22,29 +23,25 @@ export default class Context {
     this.req = req
     this.res = res
 
-    const { pathname, query } = parse(req.url || "", true)
-    this.pathname = normalize(pathname || "/")
-    this.query = query as any || {}
-  }
-
-  get cookies(): Cookies {
-    if (!(this instanceof Context)) {
-      throw new Error("Could be get from instance")
+    if (!req.url || req.url[0] !== "/" || req.url.includes("/..")) {
+      this.pathname = "/"
+      this.query = {}
+      return
     }
 
-    const cookies = new Cookies(this.req, this.res)
+    const { pathname, query } = parse(req.url, true)
+    this.pathname = pathname!
+    this.query = query
+  }
 
-    Object.defineProperty(this, "cookies", {
-      get() {
-        return cookies
-      }
-    })
+  protected _cookies?: Cookies
 
-    return cookies
+  get cookies(): Cookies {
+    return this._cookies || (this._cookies = new Cookies(this.req, this.res))
   }
 
   get method(): string {
-    return this.req.method || "GET"
+    return this.req.method!
   }
 
   get status(): number {
@@ -56,7 +53,7 @@ export default class Context {
   }
 
   get url(): string {
-    return this.req.url || ""
+    return this.req.url!
   }
 
   ip(): string | undefined {

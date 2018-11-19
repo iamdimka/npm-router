@@ -1,13 +1,10 @@
-import * as pathToRegexp from "path-to-regexp"
 import Context from "./context"
 import { Server, IncomingMessage, ServerResponse, createServer } from "http"
+import { createServer as createServerHTTPS, Server as HTTPSServer, ServerOptions } from "https"
 import Cookies, { CookieOptions } from "./cookies"
+import compile from "./match-path"
 
 export { Context, Cookies, CookieOptions }
-
-export interface Options extends pathToRegexp.RegExpOptions {
-  exact?: boolean
-}
 
 export interface Middleware<Ctx extends Context = Context> {
   ($: Ctx, next: () => void): any
@@ -16,7 +13,7 @@ export interface Middleware<Ctx extends Context = Context> {
 export interface CloseListener {
   host: string
   port: number
-  server: Server
+  server: Server | HTTPSServer
   (): Promise<void>
 }
 
@@ -24,14 +21,39 @@ export interface Constructor<Ctx extends Context = Context> {
   new(req: IncomingMessage, res: ServerResponse, ...args: any[]): Ctx
 }
 
+interface Method<Ctx extends Context> {
+  (method: string | undefined, middleware: Middleware<Ctx>): this
+  (method: string | undefined, path: string | string[], middleware: Middleware<Ctx>): this
+}
+
+const httpMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE", "TRACE", "CONNECT"]
+
+export default interface Router<Ctx extends Context = Context> {
+  readonly get: Method<Ctx>
+  readonly post: Method<Ctx>
+  readonly put: Method<Ctx>
+  readonly patch: Method<Ctx>
+  readonly head: Method<Ctx>
+  readonly options: Method<Ctx>
+  readonly delete: Method<Ctx>
+  readonly trace: Method<Ctx>
+  readonly connect: Method<Ctx>
+}
+
 export default class Router<Ctx extends Context = Context> {
   protected readonly _middlewares: Middleware<Ctx>[] = []
   readonly ContextConstructor: Constructor<Ctx>
+  protected _tlsOptions?: ServerOptions
 
   protected _handleError: (e: any, $: Ctx) => any = defaultHandler
 
   constructor(ctx?: Constructor<Ctx>) {
     this.ContextConstructor = ctx || Context as any
+  }
+
+  tsl(options: ServerOptions): this {
+    this._tlsOptions = options
+    return this
   }
 
   handleError(handler: (e: any, $: Ctx) => any): this {
@@ -45,7 +67,7 @@ export default class Router<Ctx extends Context = Context> {
   }
 
   route(method: string | undefined, middleware: Middleware<Ctx>): this
-  route(method: string | undefined, path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  route(method: string | undefined, path: string | string[], middleware: Middleware<Ctx>): this
   route(): this {
     if (typeof arguments[1] === "function") {
       const [method, middleware] = arguments
@@ -59,94 +81,31 @@ export default class Router<Ctx extends Context = Context> {
       })
     }
 
-    const [method, path, middleware, options] = arguments
+    const [method, path, middleware] = arguments
+    if (Array.isArray(path)) {
+      path.forEach(path => this.route(method, path, middleware))
+      return this
+    }
 
-    const keys: pathToRegexp.Key[] = []
-    const re = pathToRegexp(path, keys, options)
-    const keysLength = keys.length
-    const exact = !options || !options.exact
+    const check = compile(path)
 
     return this.use(($, next) => {
       if (method && $.method !== method) {
         return next()
       }
 
-      const match = re.exec($.pathname)
-      if (!match) {
-        return next()
+      if (check($.pathname, $.params)) {
+        return middleware($, next)
       }
 
-      if (exact && $.pathname !== match[0]) {
-        return next()
-      }
-
-      for (let i = 0; i < keysLength; i++) {
-        $.params[keys[i].name] = match[i + 1]
-      }
-
-      return middleware!($, next)
+      return next()
     })
   }
 
   any(middleware: Middleware<Ctx>): this
-  any(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
+  any(path: string | string[], middleware: Middleware<Ctx>): this
   any(): this {
     return (this.route as any)(undefined, ...arguments)
-  }
-
-  options(middleware: Middleware<Ctx>): this
-  options(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  options(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("OPTIONS", ...arguments)
-  }
-
-  get(middleware: Middleware<Ctx>): this
-  get(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  get(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("GET", ...arguments)
-  }
-
-  head(middleware: Middleware<Ctx>): this
-  head(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  head(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("HEAD", ...arguments)
-  }
-
-  post(middleware: Middleware<Ctx>): this
-  post(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  post(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("POST", ...arguments)
-  }
-
-  put(middleware: Middleware<Ctx>): this
-  put(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  put(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("PUT", ...arguments)
-  }
-
-  patch(middleware: Middleware<Ctx>): this
-  patch(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  patch(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("PATCH", ...arguments)
-  }
-
-
-  delete(middleware: Middleware<Ctx>): this
-  delete(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  delete(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("DELETE", ...arguments)
-  }
-
-  trace(middleware: Middleware<Ctx>): this
-  trace(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  trace(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("TRACE", ...arguments)
-  }
-
-  connect(middleware: Middleware<Ctx>): this
-  connect(path: pathToRegexp.Path, middleware: Middleware<Ctx>, options?: Options): this
-  connect(path: pathToRegexp.Path | Middleware<Ctx>, middleware?: Middleware<Ctx>, options?: Options): this {
-    return (this.route as any)("CONNECT", ...arguments)
   }
 
   listener() {
@@ -207,7 +166,7 @@ export default class Router<Ctx extends Context = Context> {
     }
 
     return new Promise((resolve, reject) => {
-      const server = createServer(this.listener())
+      const server = this._tlsOptions ? createServerHTTPS(this._tlsOptions) : createServer(this.listener())
       server.on("error", reject)
       server.listen(port, host, () => {
         server.removeListener("error", reject)
@@ -236,5 +195,12 @@ function defaultHandler<Ctx extends Context>(e: any, { res }: Ctx) {
 
   if (!res.finished) {
     res.end()
+  }
+}
+
+for (const method of httpMethods) {
+  //@ts-ignore
+  Router.prototype[method.toLowerCase()] = function () {
+    return (this.route as any)(method, ...arguments)
   }
 }

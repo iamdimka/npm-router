@@ -7,6 +7,7 @@ export interface CookieOptions {
   secure?: boolean
   httpOnly?: boolean
   maxAge?: number
+  applyInCurrentSession?: boolean
 }
 
 export default class Cookies {
@@ -73,11 +74,11 @@ export default class Cookies {
     }
 
     if (opts.secure) {
-      cookie += `; Secure`
+      cookie += "; Secure"
     }
 
     if (opts.httpOnly) {
-      cookie += `; HttpOnly`
+      cookie += "; HttpOnly"
     }
 
     if (!this._set) {
@@ -86,6 +87,10 @@ export default class Cookies {
 
     this._set.push(cookie)
     this.res.setHeader("Set-Cookie", this._set)
+
+    if (opts.applyInCurrentSession) {
+      this.getParsedCookies()[name] = value
+    }
     return this
   }
 
