@@ -1,5 +1,5 @@
 import Context from "./context"
-import { Server, IncomingMessage, ServerResponse, createServer } from "http"
+import { METHODS, Server, IncomingMessage, ServerResponse, createServer } from "http"
 import { createServer as createServerHTTPS, Server as HTTPSServer, ServerOptions } from "https"
 import Cookies, { CookieOptions } from "./cookies"
 import compile from "./match-path"
@@ -14,7 +14,7 @@ export interface CloseListener {
   host: string
   port: number
   server: Server | HTTPSServer
-  (): Promise<void>
+  close(): Promise<void>
 }
 
 export interface Constructor<Ctx extends Context = Context> {
@@ -25,8 +25,6 @@ interface Method<Ctx extends Context> {
   (method: string | undefined, middleware: Middleware<Ctx>): this
   (method: string | undefined, path: string | string[], middleware: Middleware<Ctx>): this
 }
-
-const httpMethods = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE", "TRACE", "CONNECT"]
 
 export default interface Router<Ctx extends Context = Context> {
   readonly get: Method<Ctx>
@@ -44,11 +42,25 @@ export default class Router<Ctx extends Context = Context> {
   protected readonly _middlewares: Middleware<Ctx>[] = []
   readonly ContextConstructor: Constructor<Ctx>
   protected _tlsOptions?: ServerOptions
+  protected _server?: Server | HTTPSServer
 
   protected _handleError: (e: any, $: Ctx) => any = defaultHandler
 
   constructor(ctx?: Constructor<Ctx>) {
     this.ContextConstructor = ctx || Context as any
+  }
+
+  clone(): Router<Ctx> {
+    const router = new Router(this.ContextConstructor)
+    router._tlsOptions = this._tlsOptions
+    router._handleError = this._handleError
+    router._middlewares.push(...this._middlewares.slice(0))
+    return router
+  }
+
+  server(server: Server | HTTPSServer): this {
+    this._server = server
+    return this
   }
 
   tsl(options: ServerOptions): this {
@@ -157,30 +169,46 @@ export default class Router<Ctx extends Context = Context> {
   }
 
   listen(address: string): Promise<CloseListener>
+  listen(port: number): Promise<CloseListener>
   listen(host: string, port: number): Promise<CloseListener>
-  listen(host: string, port?: number): Promise<CloseListener> {
+  listen(host: string | number, port?: number): Promise<CloseListener> {
     if (arguments.length === 1) {
-      const address = host.split(":")
-      host = address[0]
-      port = parseInt(address[1]) || 0
+      if (typeof host === "number") {
+        port = host
+        host = "0.0.0.0"
+      } else {
+        const sep = host.indexOf(":")
+        if (sep === -1) {
+          port = 0
+        } else {
+          port = parseInt(host.substr(sep + 1)) || 0
+          host = host.substr(0, sep)
+        }
+      }
     }
 
     return new Promise((resolve, reject) => {
-      const server = this._tlsOptions ? createServerHTTPS(this._tlsOptions) : createServer(this.listener())
+      const server = this._server || (this._tlsOptions ? createServerHTTPS(this._tlsOptions) : createServer())
+      const listener = this.listener()
+      server.on("request", listener)
       server.on("error", reject)
-      server.listen(port, host, () => {
+      server.listen(port, host as string, () => {
+        this._server = server
+        server.removeListener("request", listener)
         server.removeListener("error", reject)
-        const address: any = server.address()
+        const address = server.address() as { address: string, port: number }
 
-        const closeListener = Object.assign(() => new Promise<void>((resolve, reject) =>
-          server.close((err: Error) => err ? reject(err) : resolve())
-        ), {
-            host: address.address,
-            port: address.port,
-            server: server
-          })
-
-        resolve(closeListener)
+        resolve({
+          server,
+          host: address.address,
+          port: address.port,
+          close() {
+            return new Promise<void>((resolve, reject) => {
+              server.removeListener("request", listener)
+              server.close((err?: Error) => err ? reject(err) : resolve())
+            })
+          }
+        })
       })
     })
   }
@@ -198,9 +226,9 @@ function defaultHandler<Ctx extends Context>(e: any, { res }: Ctx) {
   }
 }
 
-for (const method of httpMethods) {
+void ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE", "TRACE", "CONNECT"].forEach(method => {
   //@ts-ignore
   Router.prototype[method.toLowerCase()] = function () {
     return (this.route as any)(method, ...arguments)
   }
-}
+})
