@@ -194,7 +194,6 @@ export default class Router<Ctx extends Context = Context> {
       server.on("error", reject)
       server.listen(port, host as string, () => {
         this._server = server
-        server.removeListener("request", listener)
         server.removeListener("error", reject)
         const address = server.address() as { address: string, port: number }
 
