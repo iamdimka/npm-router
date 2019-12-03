@@ -1,6 +1,6 @@
 import Context from "./context"
-import { METHODS, Server, IncomingMessage, ServerResponse, createServer } from "http"
-import { createServer as createServerHTTPS, Server as HTTPSServer, ServerOptions } from "https"
+import { Server, IncomingMessage, ServerResponse, createServer } from "http"
+import { createSecureServer, SecureServerOptions, Http2SecureServer } from "http2"
 import Cookies, { CookieOptions } from "./cookies"
 import compile from "./match-path"
 
@@ -13,7 +13,7 @@ export interface Middleware<Ctx extends Context = Context> {
 export interface CloseListener {
   host: string
   port: number
-  server: Server | HTTPSServer
+  server: Server | Http2SecureServer
   close(): Promise<void>
 }
 
@@ -41,8 +41,8 @@ export default interface Router<Ctx extends Context = Context> {
 export default class Router<Ctx extends Context = Context> {
   protected readonly _middlewares: Middleware<Ctx>[] = []
   readonly ContextConstructor: Constructor<Ctx>
-  protected _tlsOptions?: ServerOptions
-  protected _server?: Server | HTTPSServer
+  protected _tlsOptions?: SecureServerOptions
+  protected _server?: Server | Http2SecureServer
 
   protected _handleError: (e: any, $: Ctx) => any = defaultHandler
 
@@ -58,12 +58,12 @@ export default class Router<Ctx extends Context = Context> {
     return router
   }
 
-  server(server: Server | HTTPSServer): this {
+  server(server: Server | Http2SecureServer): this {
     this._server = server
     return this
   }
 
-  tsl(options: ServerOptions): this {
+  tsl(options: SecureServerOptions): this {
     this._tlsOptions = options
     return this
   }
@@ -188,7 +188,7 @@ export default class Router<Ctx extends Context = Context> {
     }
 
     return new Promise((resolve, reject) => {
-      const server = this._server || (this._tlsOptions ? createServerHTTPS(this._tlsOptions) : createServer())
+      const server = this._server || (this._tlsOptions ? createSecureServer(this._tlsOptions) : createServer())
       const listener = this.listener()
       server.on("request", listener)
       server.on("error", reject)
