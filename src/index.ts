@@ -63,7 +63,7 @@ export default class Router<Ctx extends Context = Context> {
     return this
   }
 
-  tsl(options: SecureServerOptions): this {
+  tls(options: SecureServerOptions): this {
     this._tlsOptions = options
     return this
   }
