@@ -1,4 +1,4 @@
-const regx = /\/:(\w+)(\([^)]+\))?(\?)?(\.\.\.)?/g
+const regx = /:(\w+)(\([^)]+\))?(\?)?(\.\.\.)?/g
 
 export default function compile(checkPath: string): (path: string, vars: { [key: string]: string | any }) => boolean {
   let data = regx.exec(checkPath)
@@ -14,9 +14,9 @@ export default function compile(checkPath: string): (path: string, vars: { [key:
       names.push(name)
       if (rest) {
         var r = rx.replace(/(^|[^\\])\((?!\?:)/g, "$1(?:")
-        regExp += `(?:/(${r}(?:\/${r})*))${optional ? "?" : ""}`
+        regExp += `(?:(${r}(?:\/${r})*))${optional ? "?" : ""}`
       } else {
-        regExp += optional ? `(?:/${rx})?` : `/${rx}`
+        regExp += optional ? `${rx}?` : rx
       }
       data = regx.exec(checkPath)
     }

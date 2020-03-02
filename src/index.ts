@@ -43,11 +43,20 @@ export default class Router<Ctx extends Context = Context> {
   readonly ContextConstructor: Constructor<Ctx>;
   protected _tlsOptions?: SecureServerOptions;
   protected _server?: Server | Http2SecureServer;
-
+  protected _prefix: string = "";
   protected _handleError: (e: any, $: Ctx) => any = defaultHandler;
 
   constructor(ctx?: Constructor<Ctx>) {
     this.ContextConstructor = ctx || Context as any;
+  }
+
+  usePrefix(prefix: string): this {
+    if (prefix && prefix[0] !== "/") {
+      prefix = "/" + prefix;
+    }
+
+    this._prefix = prefix || "";
+    return this;
   }
 
   clone(): Router<Ctx> {
@@ -99,7 +108,7 @@ export default class Router<Ctx extends Context = Context> {
       return this;
     }
 
-    const check = compile(path);
+    const check = compile(this._prefix + path);
 
     return this.use(($, next) => {
       if (method && $.method !== method) {
