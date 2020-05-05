@@ -1,13 +1,15 @@
-import Context from "./context";
-import { Server, IncomingMessage, ServerResponse, createServer } from "http";
+import { Server, createServer } from "http";
 import { createSecureServer, SecureServerOptions, Http2SecureServer } from "http2";
-import Cookies, { CookieOptions } from "./cookies";
-import compile from "./match-path";
+import Cookies, { CookieOptions } from "./Cookies";
+import compile from "./matchPath";
+import { compose } from "./util";
+import Request from "./Request";
+import Response from "./Response";
 
-export { Context, Cookies, CookieOptions };
+export { Request, Response, Cookies, CookieOptions };
 
-export interface Middleware<Ctx extends Context = Context> {
-  ($: Ctx, next: () => void): any;
+export interface Middleware {
+  (request: Request, response: Response, next: () => void): any;
 }
 
 export interface CloseListener {
@@ -17,38 +19,29 @@ export interface CloseListener {
   close(): Promise<void>;
 }
 
-export interface Constructor<Ctx extends Context = Context> {
-  new(req: IncomingMessage, res: ServerResponse, ...args: any[]): Ctx;
+interface Method {
+  (method: string | undefined, middleware: Middleware): this;
+  (method: string | undefined, path: string | string[], middleware: Middleware): this;
 }
 
-interface Method<Ctx extends Context> {
-  (method: string | undefined, middleware: Middleware<Ctx>): this;
-  (method: string | undefined, path: string | string[], middleware: Middleware<Ctx>): this;
+export default interface Router {
+  readonly get: Method;
+  readonly post: Method;
+  readonly put: Method;
+  readonly patch: Method;
+  readonly head: Method;
+  readonly options: Method;
+  readonly delete: Method;
+  readonly trace: Method;
+  readonly connect: Method;
 }
 
-export default interface Router<Ctx extends Context = Context> {
-  readonly get: Method<Ctx>;
-  readonly post: Method<Ctx>;
-  readonly put: Method<Ctx>;
-  readonly patch: Method<Ctx>;
-  readonly head: Method<Ctx>;
-  readonly options: Method<Ctx>;
-  readonly delete: Method<Ctx>;
-  readonly trace: Method<Ctx>;
-  readonly connect: Method<Ctx>;
-}
-
-export default class Router<Ctx extends Context = Context> {
-  protected readonly _middlewares: Middleware<Ctx>[] = [];
-  readonly ContextConstructor: Constructor<Ctx>;
+export default class Router {
+  protected readonly _middlewares: Middleware[] = [];
   protected _tlsOptions?: SecureServerOptions;
   protected _server?: Server | Http2SecureServer;
   protected _prefix: string = "";
-  protected _handleError: (e: any, $: Ctx) => any = defaultHandler;
-
-  constructor(ctx?: Constructor<Ctx>) {
-    this.ContextConstructor = ctx || Context as any;
-  }
+  protected _handleError: (e: any, request: Request, response: Response) => any = defaultErrorHandler;
 
   usePrefix(prefix: string): this {
     if (prefix && prefix[0] !== "/") {
@@ -59,11 +52,11 @@ export default class Router<Ctx extends Context = Context> {
     return this;
   }
 
-  clone(): Router<Ctx> {
-    const router = new Router(this.ContextConstructor);
+  clone(): Router {
+    const router = new Router();
     router._tlsOptions = this._tlsOptions;
     router._handleError = this._handleError;
-    router._middlewares.push(...this._middlewares.slice(0));
+    router._middlewares.push(...this._middlewares);
     return router;
   }
 
@@ -77,32 +70,38 @@ export default class Router<Ctx extends Context = Context> {
     return this;
   }
 
-  handleError(handler: (e: any, $: Ctx) => any): this {
+  handleError(handler: (e: any, request: Request, response: Response) => any): this {
     this._handleError = handler;
     return this;
   }
 
-  use(...middlewares: Middleware<Ctx>[]): this {
+  use(...middlewares: Middleware[]): this {
     this._middlewares.push(...middlewares);
     return this;
   }
 
-  route(method: string | undefined, middleware: Middleware<Ctx>): this;
-  route(method: string | undefined, path: string | string[], middleware: Middleware<Ctx>): this;
+  route(method: string | undefined, ...middlewares: [Middleware, ...Middleware[]]): this;
+  route(method: string | undefined, path: string | string[], ...middlewares: [Middleware, ...Middleware[]]): this;
   route(): this {
     if (typeof arguments[1] === "function") {
-      const [method, middleware] = arguments;
+      const [method, ...middlewares] = arguments;
+      const middleware = compose(...middlewares as [Middleware, ...Middleware[]]);
+      if (!method) {
+        return this.use(middleware);
+      }
 
-      return this.use(($, next) => {
-        if (method && $.method !== method) {
+      return this.use((req, res, next) => {
+        if (req.method !== method) {
           return next();
         }
 
-        return middleware($, next);
+        return middleware(req, res, next);
       });
     }
 
-    const [method, path, middleware] = arguments;
+    const [method, path, ...middlewares] = arguments;
+    const middleware = compose(...middlewares as [any, ...any[]]);
+
     if (Array.isArray(path)) {
       path.forEach(path => this.route(method, path, middleware));
       return this;
@@ -110,31 +109,45 @@ export default class Router<Ctx extends Context = Context> {
 
     const check = compile(this._prefix + path);
 
-    return this.use(($, next) => {
-      if (method && $.method !== method) {
-        return next();
-      }
+    if (method) {
+      return this.use((req, res, next) => {
+        if (req.method !== method) {
+          return next();
+        }
 
-      if (check($.pathname, $.params)) {
-        return middleware($, next);
+        if (req.params = check(req.pathname)) {
+          return middleware(req, res, next);
+        }
+
+        return next();
+      });
+    }
+
+    return this.use((req, res, next) => {
+      if (req.params = check(req.pathname)) {
+        return middleware(req, res, next);
       }
 
       return next();
     });
   }
 
-  any(middleware: Middleware<Ctx>): this;
-  any(path: string | string[], middleware: Middleware<Ctx>): this;
+  any(middleware: Middleware): this;
+  any(path: string | string[], middleware: Middleware): this;
   any(): this {
     return (this.route as any)(undefined, ...arguments);
   }
 
-  listener() {
-    const { _middlewares: middlewares, ContextConstructor, _handleError } = this;
+  listener(): Middleware {
+    const { _middlewares: middlewares, _handleError } = this;
+    let length = middlewares.length;
 
-    function router($: Ctx, next: () => void) {
+    middlewares.push = (...items) => {
+      return length = Array.prototype.push.apply(middlewares, items);
+    };
+
+    function router(req: Request, res: Response): Promise<void> {
       let i = -1;
-      const { length } = middlewares;
 
       return run(0);
 
@@ -145,35 +158,32 @@ export default class Router<Ctx extends Context = Context> {
 
         i = n;
         if (n >= length) {
-          return Promise.resolve(next());
+          return Promise.resolve();
         }
 
-        const fn = middlewares[n];
-
         try {
-          return Promise.resolve(fn($, run.bind(null, n + 1)));
+          return Promise.resolve(middlewares[n](req, res, run.bind(null, n + 1)));
         } catch (e) {
           return Promise.reject(e);
         }
       }
-    }
+    };
 
-    function finalize($: Ctx) {
-      if ($.bypass || $.res.finished) {
+    const finalize = (req: Request, res: Response) => {
+      if (res.bypass || res.finished) {
         return;
       }
 
-      $.status = 404;
-      $.end();
-    }
+      res.statusCode = 404;
+      res.end();
+    };
 
-    return (req: IncomingMessage, res: ServerResponse) => {
+    return (req, res) => {
       res.statusCode = 200;
-      const $ = new ContextConstructor(req, res);
 
-      router($, () => finalize($))
-        .then(() => finalize($))
-        .catch(e => _handleError(e, $));
+      router(req, res)
+        .then(() => finalize(req, res))
+        .catch(e => _handleError(e, req, res));
     };
   }
 
@@ -197,7 +207,15 @@ export default class Router<Ctx extends Context = Context> {
     }
 
     return new Promise((resolve, reject) => {
-      const server = this._server || (this._tlsOptions ? createSecureServer(this._tlsOptions) : createServer());
+      const options = {
+        IncomingMessage: Request,
+        ServerResponse: Response
+      };
+
+      const server = this._server || (this._tlsOptions ? createSecureServer({
+        ...options,
+        ...this._tlsOptions
+      }) : createServer(options));
       const listener = this.listener();
       server.on("request", listener);
       server.on("error", reject);
@@ -222,7 +240,7 @@ export default class Router<Ctx extends Context = Context> {
   }
 }
 
-function defaultHandler<Ctx extends Context>(e: any, { res }: Ctx) {
+function defaultErrorHandler(e: any, req: Request, res: Response) {
   console.error(e);
 
   if (!res.headersSent) {
