@@ -1,7 +1,6 @@
 import { mkdir as md } from "fs";
 import { dirname } from "path";
-import { Middleware } from "./index";
-import compile from "./matchPath";
+import { Middleware } from "./Router";
 
 export interface KeyValue<Value = any> {
   [key: string]: Value;
@@ -38,7 +37,7 @@ export function mkdir(path: string, recurse?: boolean): Promise<boolean> {
 
 export function compose(...fn: [Middleware, ...Middleware[]]): Middleware {
   let l = fn.length;
-  if (l === 1) {
+  if (l < 2) {
     return fn[0];
   }
 

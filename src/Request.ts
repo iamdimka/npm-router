@@ -5,87 +5,99 @@ import { mkdir } from "./util";
 import { dirname } from "path";
 import Cookies from "./Cookies";
 import ServerResponse from "./Response";
+import { normalize } from "path";
 
 const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/;
+const empty = Buffer.allocUnsafe(0);
 
 export default class Request extends HTTPIncomingMessage {
-    readonly response!: ServerResponse;
-    protected _body?: Promise<Buffer>;
-    params?: { [key: string]: string; } | boolean;
+  readonly response!: ServerResponse;
+  protected _body?: Promise<Buffer>;
+  params?: { [key: string]: string; } | boolean;
+  readonly context: { [key: string]: any; } = {};
+  body: any = undefined;
 
-    get cookies(): Cookies {
-        const value = new Cookies(this, this.response);
-        Object.defineProperty(this, "cookies", { value });
-        return value;
+  get cookies(): Cookies {
+    const value = new Cookies(this, this.response);
+    Object.defineProperty(this, "cookies", { value });
+    return value;
+  }
+
+  get parsedURL() {
+    let { url } = this;
+    let value;
+    let idx;
+
+    if (!url) {
+      url = "/";
+    } else if (url[0] !== "/") {
+      url = `/${url}`;
     }
 
-    get parsedURL() {
-        const { url } = this;
-        let value;
-        let idx;
-
-        if (!url || url[0] !== "/" || url.includes("/..")) {
-            value = { pathname: "/" };
-        } else if ((idx = url.indexOf("?", 1)) < 0) {
-            value = {
-                pathname: url
-            };
-        } else {
-            value = {
-                pathname: url.substring(0, idx),
-                query: url.substring(idx + 1)
-            };
-        };
-
-        Object.defineProperty(this, "parsedURL", { value });
-        return value;
+    if (url.includes("./")) {
+      url = normalize(url);
     }
 
-    get pathname() {
-        return this.parsedURL.pathname;
-    }
+    if ((idx = url.indexOf("?", 1)) < 0) {
+      value = {
+        pathname: url
+      };
+    } else {
+      value = {
+        pathname: url.substring(0, idx),
+        query: url.substring(idx + 1)
+      };
+    };
 
-    get query(): ParsedUrlQuery {
-        const { query } = this.parsedURL;
-        const value = query ? parse(query) : {};
-        Object.defineProperty(this, "query", { value });
-        return value;
-    }
+    Object.defineProperty(this, "parsedURL", { value });
+    return value;
+  }
 
-    ip(): string | undefined {
-        const ip = `${this.headers["x-forwarded-for"]},${this.connection.remoteAddress}`.match(regexpIP);
-        return ip ? ip[0] : undefined;
-    }
+  get pathname() {
+    return this.parsedURL.pathname;
+  }
 
-    body(force?: boolean): Promise<Buffer> {
-        return (this._body || (this._body = new Promise<Buffer>((resolve, reject) => {
-            if (force || (this.method && this.method[0] === "P") || (this.headers["content-length"] && this.headers["content-length"] != "0")) { // POST, PUT, PATCH
-                const chunks: Buffer[] = [];
+  get query(): ParsedUrlQuery {
+    const { query } = this.parsedURL;
+    const value = query ? parse(query) : {};
+    Object.defineProperty(this, "query", { value });
+    return value;
+  }
 
-                this.on("error", reject)
-                    .on("data", chunks.push.bind(chunks))
-                    .on("end", () => resolve(Buffer.concat(chunks)));
-                return;
-            }
+  ip(): string | undefined {
+    const ip = `${this.headers["x-forwarded-for"]},${this.connection.remoteAddress}`.match(regexpIP);
+    return ip ? ip[0] : undefined;
+  }
 
-            return resolve(Buffer.allocUnsafe(0));
-        })));
-    }
+  readBody(force?: boolean): Promise<Buffer> {
+    return (this._body || (this._body = new Promise<Buffer>((resolve, reject) => {
+      if (force || (this.method && this.method[0] === "P") || (this.headers["content-length"] && this.headers["content-length"] !== "0")) { // POST, PUT, PATCH
+        const chunks: Buffer[] = [];
 
-    async saveTo(path: string): Promise<void> {
-        return mkdir(dirname(path), true)
-            .then(() => new Promise<void>((resolve, reject) => {
-                if (this._body) {
-                    this._body.then(buffer => {
-                        writeFile(path, buffer, err => err ? reject(err) : resolve());
-                    });
+        this.on("error", reject)
+          .on("data", chunks.push.bind(chunks))
+          .on("end", () => resolve(chunks.length ? Buffer.concat(chunks) : empty));
+        return;
+      }
 
-                    return;
-                }
+      return resolve(empty);
+    })));
+  }
 
-                this.pipe(createWriteStream(path)
-                    .on("error", reject)
-                    .on("close", resolve));
-            }));
-    }
+  async saveTo(path: string): Promise<void> {
+    return mkdir(dirname(path), true)
+      .then(() => new Promise<void>((resolve, reject) => {
+        if (this._body) {
+          this._body.then(buffer => {
+            writeFile(path, buffer, err => err ? reject(err) : resolve());
+          });
+
+          return;
+        }
+
+        this.pipe(createWriteStream(path)
+          .on("error", reject)
+          .on("close", resolve));
+      }));
+  }
 }

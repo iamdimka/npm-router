@@ -1,15 +1,15 @@
 import Response from "./Response";
 
 export default class SSE {
-  protected _id = 0;
-  protected _connections = new Set<Response>();
-  protected _history: Array<{ id: number, data: string; }>;
-  protected _pos = 0;
-  protected _historySize: number;
+  protected id = 0;
+  protected connections = new Set<Response>();
+  protected history: Array<{ id: number, data: string; }>;
+  protected pos = 0;
+  protected historySize: number;
 
   constructor(historySize = 0) {
-    this._historySize = historySize;
-    this._history = new Array(historySize);
+    this.historySize = historySize;
+    this.history = new Array(historySize);
   }
 
   take(res: Response) {
@@ -24,13 +24,13 @@ export default class SSE {
     res.write("\n\n");
     res.socket.setNoDelay(true);
 
-    this._connections.add(res);
+    this.connections.add(res);
 
     res.on("close", () => {
-      this._connections.delete(res);
+      this.connections.delete(res);
     });
 
-    if (!this._historySize)
+    if (!this.historySize)
       return;
 
     // @ts-ignore
@@ -46,15 +46,15 @@ export default class SSE {
   protected eventsSince(id: number): string {
     let res: string = "";
 
-    for (let i = this._pos; i < this._historySize; i++) {
-      const item = this._history[i];
+    for (let i = this.pos; i < this.historySize; i++) {
+      const item = this.history[i];
       if (item && item.id > id) {
         res += item.data;
       }
     }
 
-    for (let i = 0; i < this._pos; i++) {
-      const item = this._history[i];
+    for (let i = 0; i < this.pos; i++) {
+      const item = this.history[i];
       if (item && item.id > id) {
         res += item.data;
       }
@@ -64,17 +64,17 @@ export default class SSE {
   }
 
   protected enqueue(data: string) {
-    const id = ++this._id;
+    const id = ++this.id;
     data += `\nid: ${id}\n\n`;
 
-    if (this._historySize) {
-      const pos = (this._pos++) % this._historySize;
-      const entry = this._history[pos] || { id, data };
+    if (this.historySize) {
+      const pos = (this.pos++) % this.historySize;
+      const entry = this.history[pos] || { id, data };
       entry.id = id;
       entry.data = data;
     }
 
-    this._connections.forEach(res => res.write(data));
+    this.connections.forEach(res => res.write(data));
   }
 
   event(event: string, data?: any) {
@@ -86,6 +86,6 @@ export default class SSE {
   }
 
   close() {
-    this._connections.forEach(res => res.end());
+    this.connections.forEach(res => res.end());
   }
 }

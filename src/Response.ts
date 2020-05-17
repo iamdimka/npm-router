@@ -1,20 +1,24 @@
 import { ServerResponse as HTTPServerResponse } from "http";
 import { stat, createReadStream } from "fs";
-import IncomingMessage from "./Request";
+import Request from "./Request";
 import Cookies from "./Cookies";
 
 export default class Response extends HTTPServerResponse {
-  request!: IncomingMessage;
-
+  request!: Request;
   protected _cookies?: Cookies;
+  bypass?: boolean;
+
+  get context(): Request["context"] {
+    const value = this.request.context;
+    Object.defineProperty(this, "context", { value });
+    return value;
+  }
 
   get cookies(): Cookies {
     const value = this.request.cookies;
     Object.defineProperty(this, "cookies", { value });
     return value;
   }
-
-  bypass?: boolean;
 
   setHeaders(data: { [key: string]: number | string | string[]; }): this {
     if (!this.headersSent) {
