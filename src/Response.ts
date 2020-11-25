@@ -127,7 +127,9 @@ export default class Response extends HTTPServerResponse {
   }
 
   send(payload: any, serializer: (value: any, ...rest: any[]) => Buffer | string = JSON.stringify, contentType?: string) {
-    if (!contentType && serializer === JSON.stringify) {
+    if (contentType) {
+      this.setHeader("Content-Type", "application/json");
+    } else if (serializer === JSON.stringify) {
       this.setHeader("Content-Type", "application/json");
     }
 

@@ -2,7 +2,7 @@ import { Server, createServer } from "http";
 import { createSecureServer, SecureServerOptions, Http2SecureServer } from "http2";
 import Cookies, { CookieOptions } from "./Cookies";
 import compile from "./matchPath";
-import { compose } from "./util";
+import { compose, composeErrorMiddleware } from "./util";
 import Request from "./Request";
 import Response from "./Response";
 
@@ -12,12 +12,12 @@ export interface Middleware {
   (request: Request, response: Response, next: (error?: Error) => void): any;
 }
 
-export interface ClassMiddleware {
-  middleware: Middleware;
-}
-
 export interface ErrorMiddleware {
   (error: Error, request: Request, response: Response, next: (error?: Error) => void): any;
+}
+
+export interface ClassMiddleware {
+  middleware: Middleware;
 }
 
 export type AnyMiddleware = ClassMiddleware | Middleware;
@@ -134,7 +134,7 @@ export default class Router {
       return this;
     }
 
-    const middleware = compose(...args);
+    const middleware = compose(args);
 
     if (!path && !method) {
       return this.use(middleware);
@@ -154,7 +154,7 @@ export default class Router {
       });
     }
 
-    const check = compile(path);
+    const check = compile(this.prefix + path);
 
     if (!method) {
       return this.use((req, res, next) => {
@@ -183,97 +183,31 @@ export default class Router {
 
   listener(): Middleware {
     const { middlewares, errorMiddlewares } = this;
-    let length = middlewares.length;
+    const middleware = compose(middlewares);
+    const errorMiddleware = errorMiddlewares.length ? composeErrorMiddleware(errorMiddlewares) : defaultErrorHandler;
 
-    middlewares.push = (...items) => {
-      return length = Array.prototype.push.apply(middlewares, items);
-    };
-
-    function router(req: Request, res: Response): Promise<void> {
-      let i = -1;
-
-      return next(0);
-
-      function next(n: number, error?: any): Promise<void> {
-        if (error !== void 0) {
-          return Promise.reject(error);
-        }
-
-        if (i >= n) {
-          return Promise.reject(new Error("Stop to call next()"));
-        }
-
-        i = n;
-        if (n >= length) {
-          return Promise.resolve();
-        }
-
-        try {
-          return Promise.resolve(middlewares[n](req, res, next.bind(null, n + 1)));
-        } catch (e) {
-          return Promise.reject(e);
-        }
-      }
-    };
-
-    function handleError(error: any, req: Request, res: Response) {
-      const length = errorMiddlewares.length;
-
-      if (!length) {
-        return defaultErrorHandler(error, req, res);
-      }
-
-      let i = -1;
-      return next(0);
-
-      function next(n: number, err?: any): Promise<void> {
-        if (err !== void 0) {
-          error = err;
-        }
-
-        if (i >= n) {
-          return Promise.reject(new Error("Stop to call next()"));
-        }
-
-        i = n;
-        if (n >= length) {
-          return Promise.resolve();
-        }
-
-        try {
-          return Promise.resolve(errorMiddlewares[n](error, req, res, next.bind(null, n + 1)));
-        } catch (e) {
-          return next(n + 1, e);
-        }
-      }
-    }
-
-    const finalize = (res: Response) => {
+    const finalize = (res: Response, error?: any) => {
       if (res.bypass || res.finished) {
         return;
       }
 
-      res.statusCode = 404;
+      res.statusCode = error ? 500 : 404;
       res.end();
     };
 
     return (req, res) => {
       res.statusCode = 200;
+      req.response = res;
       res.request = req;
 
-      router(req, res)
-        .then(() => finalize(res))
-        .catch(e => handleError(e, req, res))
-        .catch(e => defaultErrorHandler(e, req, res));
+      middleware(req, res, e => {
+        if (!e) {
+          return finalize(res);
+        }
+
+        errorMiddleware(e, req, res, finalize.bind(null, res));
+      });
     };
-  }
-
-  middleware(req: Request, res: Response, next: (err?: Error) => void) {
-    if (this.prefix && !req.pathname.startsWith(this.prefix)) {
-      return next();
-    }
-
-
   }
 
   listen(address: string): Promise<CloseListener>;
@@ -332,7 +266,9 @@ function bindMiddlewares(middleware: Array<AnyMiddleware>): Middleware[] {
 }
 
 function defaultErrorHandler(e: any, req: Request, res: Response) {
-  console.error(e);
+  if (e) {
+    console.error(e);
+  }
 
   if (!res.headersSent) {
     res.statusCode = 500;

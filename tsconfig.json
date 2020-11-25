@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "es2019",
     "module": "commonjs",
-    "strict": true,    
+    "strict": true,
     "moduleResolution": "node",
-    "declaration": true,    
+    "declaration": true,
     "sourceMap": true,
-    "outDir": "./lib"
+    "outDir": "./lib",
+    "noImplicitAny": true
   },
   "include": [
     "src/**/*"

@@ -11,7 +11,7 @@ const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/;
 const empty = Buffer.allocUnsafe(0);
 
 export default class Request extends HTTPIncomingMessage {
-  readonly response!: ServerResponse;
+  response!: ServerResponse;
   protected _body?: Promise<Buffer>;
   params?: { [key: string]: string; } | boolean;
   readonly context: { [key: string]: any; } = {};

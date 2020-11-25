@@ -22,7 +22,7 @@ export default class SSE {
     });
 
     res.write("\n\n");
-    res.socket.setNoDelay(true);
+    res.socket!.setNoDelay(true);
 
     this.connections.add(res);
 
