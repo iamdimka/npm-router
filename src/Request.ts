@@ -1,7 +1,7 @@
 import { IncomingMessage as HTTPIncomingMessage } from "http";
-import { createWriteStream, writeFile } from "fs";
+import { createWriteStream } from "fs";
 import { parse, ParsedUrlQuery } from "querystring";
-import { mkdir } from "./util";
+import { promises as fs } from "fs";
 import { dirname } from "path";
 import Cookies from "./Cookies";
 import ServerResponse from "./Response";
@@ -85,19 +85,17 @@ export default class Request extends HTTPIncomingMessage {
   }
 
   async saveTo(path: string): Promise<void> {
-    return mkdir(dirname(path), true)
-      .then(() => new Promise<void>((resolve, reject) => {
-        if (this._body) {
-          this._body.then(buffer => {
-            writeFile(path, buffer, err => err ? reject(err) : resolve());
-          });
+    await fs.mkdir(dirname(path), { recursive: true });
+    if (this._body) {
+      const body = await this._body;
+      fs.writeFile(path, body);
+      return;
+    }
 
-          return;
-        }
-
-        this.pipe(createWriteStream(path)
-          .on("error", reject)
-          .on("close", resolve));
-      }));
+    await new Promise<void>((resolve, reject) => {
+      this.pipe(createWriteStream(path)
+        .on("error", reject)
+        .on("close", resolve));
+    });
   }
 }

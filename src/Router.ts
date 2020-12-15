@@ -5,22 +5,24 @@ import compile from "./matchPath";
 import { compose, composeErrorMiddleware } from "./util";
 import Request from "./Request";
 import Response from "./Response";
+import HTTPError from "./HTTPError";
 
 export { Request, Response, Cookies, CookieOptions };
+type Params<T> = T extends { params: infer U; } ? U : unknown;
 
-export interface Middleware {
-  (request: Request, response: Response, next: (error?: Error) => void): any;
+export interface Middleware<T extends {} = {}> {
+  (request: Request & { params: Params<T>; }, response: Response, next: (error?: Error) => void): any;
 }
 
 export interface ErrorMiddleware {
   (error: Error, request: Request, response: Response, next: (error?: Error) => void): any;
 }
 
-export interface ClassMiddleware {
-  middleware: Middleware;
+export interface ClassMiddleware<T> {
+  middleware: Middleware<T>;
 }
 
-export type AnyMiddleware = ClassMiddleware | Middleware;
+export type AnyMiddleware<T = {}> = ClassMiddleware<T> | Middleware<T>;
 
 export interface CloseListener {
   host: string;
@@ -30,8 +32,8 @@ export interface CloseListener {
 }
 
 export interface Method {
-  (path: undefined | string | string[], middleware: Middleware, ...middlewares: Middleware[]): this;
-  (middleware: Middleware, ...middlewares: Middleware[]): this;
+  <T = {}>(path: undefined | string | string[], middleware: Middleware<T>, ...middlewares: Middleware<T>[]): this;
+  <T = {}>(middleware: Middleware<T>, ...middlewares: Middleware<T>[]): this;
 }
 
 export default interface Router {
@@ -120,8 +122,8 @@ export default class Router {
     return this;
   }
 
-  route(method: string | string[] | undefined, middleware: AnyMiddleware, ...middlewares: AnyMiddleware[]): this;
-  route(method: string | string[] | undefined, path: undefined | string | string[], middleware: AnyMiddleware, ...middlewares: AnyMiddleware[]): this;
+  route<T = {}>(method: string | string[] | undefined, middleware: AnyMiddleware<T>, ...middlewares: AnyMiddleware<T>[]): this;
+  route<T = {}>(method: string | string[] | undefined, path: undefined | string | string[], middleware: AnyMiddleware<T>, ...middlewares: AnyMiddleware<T>[]): this;
   route(method: string | string[] | undefined, ...args: [any, ...any[]]): this {
     if (Array.isArray(method)) {
       method.forEach(method => this.route(method, ...args));
@@ -187,7 +189,13 @@ export default class Router {
     const errorMiddleware = errorMiddlewares.length ? composeErrorMiddleware(errorMiddlewares) : defaultErrorHandler;
 
     const finalize = (res: Response, error?: any) => {
-      if (res.bypass || res.finished) {
+      if (res.bypass || res.writableEnded) {
+        return;
+      }
+
+      if (HTTPError.is(error) && !res.headersSent) {
+        res.statusCode = error.code;
+        res.writeHead(error.code, error.message).end();
         return;
       }
 
@@ -266,6 +274,10 @@ function bindMiddlewares(middleware: Array<AnyMiddleware>): Middleware[] {
 }
 
 function defaultErrorHandler(e: any, req: Request, res: Response) {
+  if (HTTPError.is(e) && !res.headersSent) {
+    res.writeHead(e.code, e.message);
+  }
+
   if (e) {
     console.error(e);
   }
@@ -274,7 +286,7 @@ function defaultErrorHandler(e: any, req: Request, res: Response) {
     res.statusCode = 500;
   }
 
-  if (!res.finished) {
+  if (!res.writableEnded) {
     res.end();
   }
 }
