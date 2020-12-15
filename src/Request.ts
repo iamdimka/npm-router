@@ -6,6 +6,7 @@ import { dirname } from "path";
 import Cookies from "./Cookies";
 import ServerResponse from "./Response";
 import { normalize } from "path";
+import { readBody } from "./util";
 
 const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/;
 const empty = Buffer.allocUnsafe(0);
@@ -69,19 +70,16 @@ export default class Request extends HTTPIncomingMessage {
     return ip ? ip[0] : undefined;
   }
 
-  readBody(force?: boolean): Promise<Buffer> {
-    return (this._body || (this._body = new Promise<Buffer>((resolve, reject) => {
-      if (force || (this.method && this.method[0] === "P") || (this.headers["content-length"] && this.headers["content-length"] !== "0")) { // POST, PUT, PATCH
-        const chunks: Buffer[] = [];
+  readBody(maxBodySize: number = Infinity, force?: boolean): Promise<Buffer> {
+    if (this._body) {
+      return this._body;
+    }
 
-        this.on("error", reject)
-          .on("data", chunks.push.bind(chunks))
-          .on("end", () => resolve(chunks.length ? Buffer.concat(chunks) : empty));
-        return;
-      }
+    if (force || (this.method && this.method[0] === "P") || ("content-length" in this.headers && this.headers["content-length"] !== "0")) { // POST, PUT, PATCH
+      return this._body = readBody(this, maxBodySize);
+    }
 
-      return resolve(empty);
-    })));
+    return this._body = Promise.resolve(empty);
   }
 
   async saveTo(path: string): Promise<void> {

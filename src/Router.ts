@@ -228,11 +228,15 @@ export default class Router {
         host = "0.0.0.0";
       } else {
         const sep = host.indexOf(":");
-        if (sep === -1) {
-          port = 0;
-        } else {
+
+        if (sep >= 0) {
           port = parseInt(host.substr(sep + 1)) || 0;
           host = host.substr(0, sep) || "0.0.0.0";
+        } else if (/^[0-9]+$/.test(host)) {
+          port = +host;
+          host = "0.0.0.0";
+        } else {
+          port = 0;
         }
       }
     }

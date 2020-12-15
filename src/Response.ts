@@ -137,7 +137,7 @@ export default class Response extends HTTPServerResponse {
   }
 
   finalize(body?: string | Buffer, setContentLength: boolean = true): this {
-    if (this.finished) {
+    if (this.finished || this.writableEnded) {
       return this;
     }
 
