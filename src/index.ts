@@ -11,7 +11,11 @@ export {
   ErrorMiddleware,
   CloseListener,
   Method,
-  default as Router,
+  default as Router
 } from "./Router";
+export {
+  readBody,
+  staticMiddleware
+} from "./util";
 
 export default Router;

@@ -1,11 +1,12 @@
-import { Server, createServer } from "http";
-import { createSecureServer, SecureServerOptions, Http2SecureServer } from "http2";
 import Cookies, { CookieOptions } from "./Cookies";
-import compile from "./matchPath";
+import { Http2SecureServer, SecureServerOptions, createSecureServer } from "http2";
+import { Server, createServer } from "http";
 import { compose, composeErrorMiddleware } from "./util";
+
+import HTTPError from "./HTTPError";
 import Request from "./Request";
 import Response from "./Response";
-import HTTPError from "./HTTPError";
+import compile from "./matchPath";
 
 export { Request, Response, Cookies, CookieOptions };
 type Params<T> = T extends { params: infer U; } ? U : unknown;
@@ -25,6 +26,7 @@ export interface ClassMiddleware<T> {
 export type AnyMiddleware<T = {}> = ClassMiddleware<T> | Middleware<T>;
 
 export interface CloseListener {
+  url: string;
   host: string;
   port: number;
   server: Server | Http2SecureServer;
@@ -51,6 +53,7 @@ export default interface Router {
 export default class Router {
   protected readonly middlewares: Middleware[] = [];
   protected readonly errorMiddlewares: ErrorMiddleware[] = [];
+  disableAutoHeadForGet?: boolean;
 
   protected tlsOptions?: SecureServerOptions;
   protected server?: Server | Http2SecureServer;
@@ -66,6 +69,11 @@ export default class Router {
 
     //@ts-ignore
     Router.prototype[method.toLowerCase()] = function (this: Router, ...args: any[]) {
+      if (method === "GET" && !this.disableAutoHeadForGet) {
+        //@ts-ignore
+        this.route("HEAD", ...args);
+      }
+
       //@ts-ignore
       return this.route(method, ...args);
     };
@@ -74,6 +82,12 @@ export default class Router {
   constructor(data?: { Request?: typeof Request, Response?: typeof Response; }) {
     this.Request = data && data.Request || Request;
     this.Response = data && data.Response || Response;
+  }
+
+  subroute(prefix: string): this {
+    const router = Object.create(this);
+    this.prefix += prefix;
+    return router;
   }
 
   usePrefix(prefix: string): this {
@@ -261,6 +275,7 @@ export default class Router {
 
         resolve({
           server,
+          url: `${this.tlsOptions ? "https" : "http"}://${address.address}:${address.port}`,
           host: address.address,
           port: address.port,
           close: () => new Promise<void>((resolve, reject) => {

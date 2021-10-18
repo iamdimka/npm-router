@@ -1,21 +1,22 @@
-import { IncomingMessage as HTTPIncomingMessage } from "http";
-import { createWriteStream } from "fs";
-import { parse, ParsedUrlQuery } from "querystring";
-import { promises as fs } from "fs";
-import { dirname } from "path";
+import { ParsedUrlQuery, parse } from "querystring";
+
 import Cookies from "./Cookies";
+import { IncomingMessage as HTTPIncomingMessage } from "http";
 import ServerResponse from "./Response";
+import { createWriteStream } from "fs";
+import { dirname } from "path";
+import { promises as fs } from "fs";
+import { isIP } from "net";
 import { normalize } from "path";
 import { readBody } from "./util";
 
-const regexpIP = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/;
 const empty = Buffer.allocUnsafe(0);
 
 export default class Request extends HTTPIncomingMessage {
   response!: ServerResponse;
   protected _body?: Promise<Buffer>;
-  params?: { [key: string]: string; } | boolean;
-  readonly context: { [key: string]: any; } = {};
+  params?: Record<string, string> | boolean;
+  readonly context: Record<string, any> = {};
   body: any = undefined;
 
   get cookies(): Cookies {
@@ -65,9 +66,47 @@ export default class Request extends HTTPIncomingMessage {
     return value;
   }
 
+  get acceptEncoding(): string[] {
+    let value = this.headers["accept-encoding"] || [];
+    if (typeof value === "string") {
+      let idx = value.indexOf(";");
+      if (idx >= 0) {
+        value = value.substring(0, idx);
+      }
+
+      value = value.split(",").map(encoding => encoding.trim());
+    }
+
+    Object.defineProperty(this, "acceptEncoding", { value });
+    return value;
+  }
+
+  acceptsEncoding(encoding: string) {
+    return this.acceptEncoding.includes(encoding);
+  }
+
   ip(): string | undefined {
-    const ip = `${this.headers["x-forwarded-for"]},${this.connection.remoteAddress}`.match(regexpIP);
-    return ip ? ip[0] : undefined;
+    let ip = this.headers["x-real-ip"] as string;
+    if (isIP(ip)) {
+      return ip;
+    }
+
+    ip = this.headers["x-proxyuser-ip"] as string;
+    if (isIP(ip)) {
+      return ip;
+    }
+
+    ip = this.headers["x-forwarded-for"] as string;
+    if (ip) {
+      const idx = ip.indexOf(",");
+      ip = idx < 0 ? ip.trim() : ip.substring(0, idx).trim();
+
+      if (isIP(ip)) {
+        return ip;
+      }
+    }
+
+    return this.socket.remoteAddress;
   }
 
   readBody(maxBodySize: number = Infinity, force?: boolean): Promise<Buffer> {
